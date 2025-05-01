@@ -4,11 +4,9 @@ import { AppSidebar } from '@/components/global/app-sidebar';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { ModeToggle } from '@/components/global/Mode-toggle';
-import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { signOutAction } from '@/app/actions';
-import PostGenerator from '@/components/core/PostGenerator';
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -20,7 +18,7 @@ export default async function Dashboard() {
 
   const { data: userData } = await supabase
     .from('users')
-    .select('username, profile_picture, genres')
+    .select('username, profile_picture')
     .eq('id', user.id)
     .single();
 
@@ -60,12 +58,6 @@ export default async function Dashboard() {
         </header>
         <div className="flex flex-col items-center justify-center p-4">
           <h1 className="text-2xl font-bold mb-6">Welcome, {userData?.username}!</h1>
-          <div className="flex gap-4">
-            <PostGenerator userGenres={userData?.genres || []} />
-            <Button asChild>
-              <a href="/drafts">Drafts</a>
-            </Button>
-          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>

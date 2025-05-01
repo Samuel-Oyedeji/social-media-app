@@ -45,6 +45,13 @@ export function AppSidebar() {
                   </Button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Button asChild>
+                    <a href="/dashboard">Back to Dashboard</a>
+                  </Button>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

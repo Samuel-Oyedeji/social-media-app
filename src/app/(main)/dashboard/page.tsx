@@ -1,46 +1,70 @@
-import { AppSidebar } from "@/components/global/app-sidebar";
-import { Separator } from "@/components/ui/separator";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ModeToggle } from "@/components/global/Mode-toggle";
-import { FaCircleStop } from "react-icons/fa6";
-import { UploadForm } from "@/components/core/UploadForm";
-import { createClient } from "./../../../../utils/supabase/server";
-import { redirect } from "next/navigation";
+import { createClient } from '@/utils/supabase/server';
+import { redirect } from 'next/navigation';
+import { AppSidebar } from '@/components/global/app-sidebar';
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { Separator } from '@/components/ui/separator';
+import { ModeToggle } from '@/components/global/Mode-toggle';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { signOutAction } from '@/app/actions';
+import PostGenerator from '@/components/core/PostGenerator';
 
-export default async function Page() {
+export default async function Dashboard() {
   const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return redirect("/sign-in");
+  if (error || !user) {
+    return redirect('/sign-in');
   }
+
+  const { data: userData } = await supabase
+    .from('users')
+    .select('username, profile_picture, genres')
+    .eq('id', user.id)
+    .single();
 
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="relative flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1 transition-transform duration-300 hover:scale-110" />
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <button
-            type="button"
-            className="absolute top-4 right-4 flex items-center gap-2 px-2 py-1.5 bg-red-500 text-white font-bold rounded-lg shadow hover:bg-red-600 transition-all duration-300 hover:scale-105 hover:shadow-lg"
-          >
-            <FaCircleStop className="w-4 h-4" />
-            Record
-          </button>
+          <div className="flex-1" />
           <ModeToggle />
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={userData?.profile_picture || ''} alt={userData?.username || 'User'} />
+                <AvatarFallback>{userData?.username?.charAt(0) || 'U'}</AvatarFallback>
+              </Avatar>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <a href="/settings">Settings</a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href="/history">History</a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href="/profile">Edit Profile</a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <form action={signOutAction}>
+                  <button type="submit">Log Out</button>
+                </form>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
-
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] max-h-screen p-4">
-          <h1 className="lg:text-4xl text-xl md:text-2xl text-gray-800 dark:text-gray-400 font-bold text-center mb-6 animate-slideDown opacity-50">
-            What do you want to learn today?
-          </h1>
-          <div className="w-full mt-32">
-            <UploadForm />
+        <div className="flex flex-col items-center justify-center p-4">
+          <h1 className="text-2xl font-bold mb-6">Welcome, {userData?.username}!</h1>
+          <div className="flex gap-4">
+            <PostGenerator userGenres={userData?.genres || []} />
+            <Button asChild>
+              <a href="/drafts">Drafts</a>
+            </Button>
           </div>
         </div>
       </SidebarInset>

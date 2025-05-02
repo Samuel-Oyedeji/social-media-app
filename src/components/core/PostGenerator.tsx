@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import emailjs from '@emailjs/browser';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +27,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { createClient } from '@/utils/supabase/client';
-import { Toast, ToastProvider, ToastViewport, ToastTitle, ToastDescription, ToastClose } from '@/components/ui/toast';
+import {
+  Toast,
+  ToastProvider,
+  ToastViewport,
+  ToastTitle,
+  ToastDescription,
+  ToastClose,
+} from '@/components/ui/toast';
 
 const HUMOR_TYPES = [
   'Informative',
@@ -190,6 +198,33 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
     setTimeout(() => setToastMessage(null), 3000); // Auto-dismiss after 3s
   };
 
+  const sendEmail = async (to: string, subject: string, text: string) => {
+    try {
+      const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+      const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
+      const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+
+      if (!serviceId || !templateId || !publicKey) {
+        throw new Error('EmailJS configuration missing');
+      }
+
+      console.log('Initializing EmailJS with public key');
+      emailjs.init(publicKey);
+
+      console.log('Sending email to:', to, 'with subject:', subject);
+      const response = await emailjs.send(serviceId, templateId, {
+        to_email: to,
+        subject,
+        message: text,
+        from_name: 'YourApp',
+      });
+
+      console.log(`Email sent to ${to}: ${subject}`, response);
+    } catch (error) {
+      console.error('Error sending email via EmailJS:', error);
+    }
+  };
+
   const onSubmit = async (data: PostFormValues) => {
     try {
       // Step 1: Fetch genre-related content using SerpAPI
@@ -341,6 +376,24 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
         description: `${generatedPosts.length} posts generated!`,
       });
       setOpen(false);
+
+      // Step 4: Notify user if email_notifications is enabled
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && user.email) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('email_notifications')
+          .eq('user_id', user.id)
+          .single();
+
+        if (settings?.email_notifications) {
+          await sendEmail(
+            user.email,
+            'Posts Generated',
+            `Successfully generated ${generatedPosts.length} posts for ${data.platform}.`
+          );
+        }
+      }
     } catch (error) {
       console.error('Error generating posts:', error);
       showToast({
@@ -376,6 +429,23 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
         title: 'Success',
         description: 'Draft saved!',
       });
+
+      // Notify user if email_notifications is enabled
+      if (user.email) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('email_notifications')
+          .eq('user_id', user.id)
+          .single();
+
+        if (settings?.email_notifications) {
+          await sendEmail(
+            user.email,
+            'Draft Saved',
+            `Your draft for ${form.getValues('platform')} has been saved: ${post.content}`
+          );
+        }
+      }
     }
   };
 
@@ -404,6 +474,23 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
         title: 'Success',
         description: 'Post published!',
       });
+
+      // Notify user if email_notifications is enabled
+      if (user.email) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('email_notifications')
+          .eq('user_id', user.id)
+          .single();
+
+        if (settings?.email_notifications) {
+          await sendEmail(
+            user.email,
+            'Post Published',
+            `Your post for ${form.getValues('platform')} has been published: ${post.content}`
+          );
+        }
+      }
     }
   };
 
@@ -582,7 +669,11 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
       </div>
       <ToastViewport />
       {toastMessage && (
-        <Toast open={!!toastMessage} onOpenChange={() => setToastMessage(null)} variant={toastMessage.variant}>
+        <Toast
+          open={!!toastMessage}
+          onOpenChange={() => setToastMessage(null)}
+          variant={toastMessage.variant}
+        >
           <ToastTitle>{toastMessage.title}</ToastTitle>
           <ToastDescription>{toastMessage.description}</ToastDescription>
           <ToastClose />

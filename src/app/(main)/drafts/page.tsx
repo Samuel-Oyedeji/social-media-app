@@ -1,44 +1,300 @@
-import { createClient } from '@/utils/supabase/server';
-import { redirect } from 'next/navigation';
-import { AppSidebar } from '@/components/global/app-sidebar';
-import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
-import { Separator } from '@/components/ui/separator';
-import { ModeToggle } from '@/components/global/Mode-toggle';
-import DraftList from '@/components/core/DraftList';
+'use client';
 
-export default async function Drafts() {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+import { useState, useEffect } from 'react';
+import { createClient } from '@/utils/supabase/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Toast,
+  ToastProvider,
+  ToastViewport,
+  ToastTitle,
+  ToastDescription,
+  ToastClose,
+} from '@/components/ui/toast';
 
-  if (error || !user) {
-    return redirect('/sign-in');
-  }
+type Post = {
+  id: string;
+  platform: string;
+  content: string;
+  image?: string;
+  is_draft: boolean;
+  created_at: string;
+};
 
-  const { data: drafts } = await supabase
-    .from('posts')
-    .select('id, platform, content, image')
-    .eq('user_id', user.id)
-    .eq('is_draft', true);
+type ToastMessage = {
+  title: string;
+  description: string;
+  variant?: 'default' | 'destructive';
+};
+
+export default function DraftList() {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [newImage, setNewImage] = useState<FileList | null>(null);
+  const [editMode, setEditMode] = useState<'content' | 'image' | null>(null);
+  const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
+  const supabase = createClient();
+
+  const showToast = (message: ToastMessage) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000); // Auto-dismiss after 3s
+  };
+
+  useEffect(() => {
+    const fetchDrafts = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_draft', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching drafts:', error);
+        showToast({
+          title: 'Error',
+          description: 'Failed to load drafts.',
+          variant: 'destructive',
+        });
+      } else {
+        setPosts(data || []);
+      }
+    };
+
+    fetchDrafts();
+  }, [supabase]);
+
+  const handleDelete = async (postId: string) => {
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+
+    if (error) {
+      console.error('Error deleting draft:', error);
+      showToast({
+        title: 'Error',
+        description: 'Failed to delete draft.',
+        variant: 'destructive',
+      });
+    } else {
+      setPosts(posts.filter((post) => post.id !== postId));
+      showToast({
+        title: 'Success',
+        description: 'Draft deleted!',
+      });
+    }
+  };
+
+  const handlePublish = async (post: Post) => {
+    const { error } = await supabase
+      .from('posts')
+      .update({ is_draft: false })
+      .eq('id', post.id);
+
+    if (error) {
+      console.error('Error publishing draft:', error);
+      showToast({
+        title: 'Error',
+        description: 'Failed to publish draft.',
+        variant: 'destructive',
+      });
+    } else {
+      setPosts(posts.filter((p) => p.id !== post.id));
+      showToast({
+        title: 'Success',
+        description: 'Draft published!',
+      });
+    }
+  };
+
+  const handleEditContent = (post: Post) => {
+    setSelectedPost(post);
+    setEditContent(post.content);
+    setEditMode('content');
+  };
+
+  const handleEditImage = (post: Post) => {
+    setSelectedPost(post);
+    setNewImage(null);
+    setEditMode('image');
+  };
+
+  const handleUpdateContent = async () => {
+    if (!selectedPost) return;
+
+    const { error } = await supabase
+      .from('posts')
+      .update({ content: editContent })
+      .eq('id', selectedPost.id);
+
+    if (error) {
+      console.error('Error updating draft:', error);
+      showToast({
+        title: 'Error',
+        description: 'Failed to update draft.',
+        variant: 'destructive',
+      });
+    } else {
+      setPosts(
+        posts.map((post) =>
+          post.id === selectedPost.id ? { ...post, content: editContent } : post
+        )
+      );
+      setSelectedPost(null);
+      setEditMode(null);
+      showToast({
+        title: 'Success',
+        description: 'Draft updated!',
+      });
+    }
+  };
+
+  const handleUpdateImage = async () => {
+    if (!selectedPost || !newImage || newImage.length === 0) return;
+
+    const file = newImage[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `post-${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('posts')
+      .upload(fileName, file, { upsert: true });
+
+    if (uploadError) {
+      console.error('Error uploading image:', uploadError);
+      showToast({
+        title: 'Error',
+        description: 'Failed to upload image.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from('posts').getPublicUrl(fileName);
+    const imageUrl = urlData.publicUrl;
+
+    const { error: updateError } = await supabase
+      .from('posts')
+      .update({ image: imageUrl })
+      .eq('id', selectedPost.id);
+
+    if (updateError) {
+      console.error('Error updating image:', updateError);
+      showToast({
+        title: 'Error',
+        description: 'Failed to update image.',
+        variant: 'destructive',
+      });
+    } else {
+      setPosts(
+        posts.map((post) =>
+          post.id === selectedPost.id ? { ...post, image: imageUrl } : post
+        )
+      );
+      setSelectedPost(null);
+      setEditMode(null);
+      showToast({
+        title: 'Success',
+        description: 'Image updated!',
+      });
+    }
+  };
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <div className="flex-1" />
-          <ModeToggle />
-        </header>
-        <div className="p-4">
-          <h1 className="text-2xl font-bold mb-6">Your Drafts</h1>
-          {drafts && drafts.length > 0 ? (
-            <DraftList drafts={drafts} />
-          ) : (
-            <p>No drafts found.</p>
-          )}
+    <ToastProvider>
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-4">Drafts</h1>
+        <div className="grid gap-4">
+          {posts.map((post) => (
+            <Card key={post.id}>
+              <CardHeader>
+                <CardTitle>{post.platform} Draft</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p>{post.content}</p>
+                {post.image && (
+                  <img
+                    src={post.image}
+                    alt="Draft image"
+                    className="mt-2 max-w-full h-auto"
+                  />
+                )}
+                <p className="text-sm text-gray-500 mt-2">
+                  Created: {new Date(post.created_at).toLocaleString()}
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <Button onClick={() => handleEditContent(post)}>Edit Content</Button>
+                  <Button onClick={() => handleEditImage(post)}>Edit Image</Button>
+                  <Button onClick={() => handlePublish(post)}>Publish</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleDelete(post.id)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </SidebarInset>
-    </SidebarProvider>
+        {selectedPost && (
+          <Dialog
+            open={!!selectedPost}
+            onOpenChange={() => {
+              setSelectedPost(null);
+              setEditMode(null);
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editMode === 'content' ? 'Edit Content' : 'Edit Image'}</DialogTitle>
+              </DialogHeader>
+              {editMode === 'content' ? (
+                <>
+                  <Textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                  <Button onClick={handleUpdateContent}>Save Changes</Button>
+                </>
+              ) : (
+                <>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setNewImage(e.target.files)}
+                  />
+                  <Button onClick={handleUpdateImage}>Save Image</Button>
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+      <ToastViewport />
+      {toastMessage && (
+        <Toast
+          open={!!toastMessage}
+          onOpenChange={() => setToastMessage(null)}
+          variant={toastMessage.variant}
+        >
+          <ToastTitle>{toastMessage.title}</ToastTitle>
+          <ToastDescription>{toastMessage.description}</ToastDescription>
+          <ToastClose />
+        </Toast>
+      )}
+    </ToastProvider>
   );
 }

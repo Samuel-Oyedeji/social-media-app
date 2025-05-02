@@ -1,106 +1,149 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useForm, FormProvider } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { createClient } from '@/utils/supabase/client';
-import { AppSidebar } from '@/components/global/app-sidebar';
-import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
-import { Separator } from '@/components/ui/separator';
-import { ModeToggle } from '@/components/global/Mode-toggle';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { signOutAction } from '@/app/actions';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import {
+  Toast,
+  ToastProvider,
+  ToastViewport,
+  ToastTitle,
+  ToastDescription,
+  ToastClose,
+} from '@/components/ui/toast';
 
-export default function Settings() {
-  const [userData, setUserData] = useState<{ username: string; profile_picture?: string } | null>(null);
-  const [notifications, setNotifications] = useState(false);
-  const router = useRouter();
+const settingsSchema = z.object({
+  email_notifications: z.boolean(),
+});
+
+type SettingsFormValues = z.infer<typeof settingsSchema>;
+
+type ToastMessage = {
+  title: string;
+  description: string;
+  variant?: 'default' | 'destructive';
+};
+
+export default function SettingsPage() {
+  const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
   const supabase = createClient();
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/sign-in');
-        return;
-      }
+  const form = useForm<SettingsFormValues>({
+    resolver: zodResolver(settingsSchema),
+    defaultValues: {
+      email_notifications: false,
+    },
+  });
 
-      const { data } = await supabase
-        .from('users')
-        .select('username, profile_picture')
-        .eq('id', user.id)
-        .single();
-
-      if (data) {
-        setUserData(data);
-      }
-    };
-    fetchUserData();
-  }, [router, supabase]);
-
-  const handleSaveSettings = () => {
-    // Placeholder: Save settings (e.g., to Supabase or local storage)
-    alert(`Notifications: ${notifications ? 'Enabled' : 'Disabled'}`);
+  const showToast = (message: ToastMessage) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000); // Auto-dismiss after 3s
   };
 
-  if (!userData) {
-    return <div>Loading...</div>;
-  }
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('email_notifications')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116: No rows found
+        console.error('Error fetching settings:', error);
+        showToast({
+          title: 'Error',
+          description: 'Failed to load settings.',
+          variant: 'destructive',
+        });
+      } else if (data) {
+        form.reset({ email_notifications: data.email_notifications });
+      }
+    };
+
+    fetchSettings();
+  }, [supabase, form]);
+
+  const onSubmit = async (data: SettingsFormValues) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert(
+        { user_id: user.id, email_notifications: data.email_notifications, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      );
+
+    if (error) {
+      console.error('Error saving settings:', error);
+      showToast({
+        title: 'Error',
+        description: 'Failed to save settings.',
+        variant: 'destructive',
+      });
+    } else {
+      showToast({
+        title: 'Success',
+        description: 'Settings saved!',
+      });
+    }
+  };
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <div className="flex-1" />
-          <ModeToggle />
-          <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={userData?.profile_picture || ''} alt={userData?.username || 'User'} />
-                <AvatarFallback>{userData?.username?.charAt(0) || 'U'}</AvatarFallback>
-              </Avatar>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <a href="/settings">Settings</a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a href="/history">History</a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a href="/profile">Edit Profile</a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <form action={signOutAction}>
-                  <button type="submit">Log Out</button>
-                </form>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </header>
-        <div className="flex flex-col items-center justify-center p-4">
-          <div className="bg-white p-8 rounded shadow-md w-full max-w-md">
-            <h1 className="text-2xl font-bold mb-6">Settings</h1>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="notifications">Enable Notifications</Label>
-                <Switch
-                  id="notifications"
-                  checked={notifications}
-                  onCheckedChange={setNotifications}
-                />
-              </div>
-              <Button onClick={handleSaveSettings}>Save Settings</Button>
-            </div>
-          </div>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <ToastProvider>
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-4">Notification Settings</h1>
+        <FormProvider {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-w-md">
+            <FormField
+              control={form.control}
+              name="email_notifications"
+              render={({ field }) => (
+                <FormItem className="flex items-center space-x-2">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <FormLabel className="text-sm font-medium">
+                    Receive email notifications for post actions (e.g., generation, drafts, publishing)
+                  </FormLabel>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button type="submit">Save Settings</Button>
+          </form>
+        </FormProvider>
+      </div>
+      <ToastViewport />
+      {toastMessage && (
+        <Toast
+          open={!!toastMessage}
+          onOpenChange={() => setToastMessage(null)}
+          variant={toastMessage.variant}
+        >
+          <ToastTitle>{toastMessage.title}</ToastTitle>
+          <ToastDescription>{toastMessage.description}</ToastDescription>
+          <ToastClose />
+        </Toast>
+      )}
+    </ToastProvider>
   );
 }

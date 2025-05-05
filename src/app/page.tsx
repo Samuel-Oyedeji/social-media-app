@@ -2,6 +2,10 @@
 import { useState } from "react";
 import {
   Brain,
+  Linkedin,
+  Instagram,
+  Twitter,
+  Play,
   Sparkles,
   Book,
   Clock,
@@ -45,9 +49,9 @@ function Header() {
     <header className='sticky top-0 z-50 bg-indigo-950/80 backdrop-blur-sm'>
       <div className='container mx-auto px-4 py-4 flex justify-between items-center'>
         <div className='flex items-center gap-2'>
-          <Brain className='h-8 w-8 text-indigo-400' />
+          <Play className='h-8 w-8 text-indigo-400' />
           <div className='text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400'>
-            AutoLearn AI
+            Autoplay
           </div>
         </div>
         <nav className='hidden md:flex items-center gap-6'>
@@ -73,7 +77,7 @@ function Header() {
         <div className='hidden md:flex items-center gap-4'>
         <Link href="/sign-up">
           <Button
-            variant='outline'
+            variant='outline' effect="ringHover"
             className='bg-gradient-to-r from-indigo-600 to-purple-600 text-white border-indigo-500/50 hover:bg-indigo-500/20'
           >
            
@@ -81,8 +85,8 @@ function Header() {
           </Button>
            </Link>
             <Link href="/sign-in">
-          <Button className='bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'>
-            Sign Up
+          <Button effect="ringHover" className='bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'>
+            Sign In
           </Button>
           </Link>
         </div>
@@ -122,12 +126,12 @@ function Header() {
               Pricing
             </Link>
             <Button
-              variant='outline'
+              variant='outline' effect="ringHover"
               className='text-white border-indigo-500/50 bg-indigo-400/20 hover:bg-indigo-500/20'
             >
               Try Free
             </Button>
-            <Button className='w-full bg-gradient-to-r from-indigo-600 to-purple-600'>
+            <Button effect="ringHover" className='w-full bg-gradient-to-r from-indigo-600 to-purple-600'>
               Sign Up
             </Button>
           </div>
@@ -183,128 +187,116 @@ function Hero() {
 }
 
 function Dashboard() {
-  const [activeSubject, setActiveSubject] = useState("Math");
-  const [activeTab, setActiveTab] = useState("Dashboard");
+  const [activePlatform, setActivePlatform] = useState("Instagram");
+  const [activeTab, setActiveTab] = useState("Overview");
 
-  const subjects = [
-    { name: "Math", icon: "📐", topics: ["Algebra", "Calculus", "Geometry"] },
-    {
-      name: "Science",
-      icon: "🧬",
-      topics: ["Biology", "Chemistry", "Physics"],
-    },
-    {
-      name: "History",
-      icon: "📚",
-      topics: ["World History", "Civil Rights", "Ancient Civilizations"],
-    },
-    {
-      name: "English",
-      icon: "📝",
-      topics: ["Literature", "Grammar", "Essay Writing"],
-    },
+  const platforms = [
+    { name: "Instagram", icon: <Instagram className="w-5 h-5 text-indigo-300" /> , categories: ["Reels", "Stories", "Posts"] },
+    { name: "Twitter", icon: <Twitter className="w-5 h-5 text-indigo-300" /> , categories: ["Threads", "Tweets", "Polls"] },
+    { name: "LinkedIn", icon: <Linkedin className="w-5 h-5 text-indigo-300" /> , categories: ["Articles", "Tips", "Career"] },
   ];
 
   const stats = [
-    { label: "Study Streak", value: "7 days", icon: Trophy },
-    { label: "Hours This Week", value: "12.5", icon: Clock },
-    { label: "Topics Mastered", value: "24", icon: Target },
+    { label: "Posts Created", value: "56", icon: Sparkles },
+    { label: "Engagement Rate", value: "7.3%", icon: Target },
+    { label: "Followers Gained", value: "120", icon: Trophy },
   ];
 
   return (
-    <section className='container mx-auto px-4 py-16'>
-      <h2 className='text-3xl font-bold text-center mb-8'>
-        Interactive Dashboard Preview
+    <section className="container mx-auto px-4 py-16">
+      <h2 className="text-3xl font-bold text-center mb-8">
+        Social Media Assistant Preview
       </h2>
-      <div className='max-w-6xl mx-auto bg-indigo-950/50 backdrop-blur-sm rounded-2xl border border-indigo-500/20 overflow-hidden'>
-        <div className='bg-black/40 p-4'>
-          <div className='flex flex-col md:flex-row md:items-center justify-between gap-4'>
-            <div className='flex overflow-x-auto hide-scrollbar'>
-              {["Dashboard", "Study Plans", "Practice Tests", "Analytics"].map(
-                (tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${
-                      activeTab === tab
-                        ? "bg-indigo-500/20 text-indigo-300"
-                        : "hover:bg-indigo-500/10 text-gray-400"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                )
-              )}
+
+      <div className="max-w-6xl mx-auto bg-indigo-950/50 backdrop-blur-sm rounded-2xl border border-indigo-500/20 overflow-hidden">
+        <div className="bg-black/40 p-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex overflow-x-auto hide-scrollbar">
+              {["Overview", "Generate Post", "Scheduled", "Analytics"].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${
+                    activeTab === tab
+                      ? "bg-indigo-500/20 text-indigo-300"
+                      : "hover:bg-indigo-500/10 text-gray-400"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
             </div>
-            <div className='relative w-full md:w-auto'>
-              <Search className='h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400' />
+
+            <div className="relative w-full md:w-auto">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
-                type='search'
-                placeholder='Search topics...'
-                className='w-full md:w-64 bg-black/40 rounded-full py-2 pl-10 pr-4 text-sm border border-indigo-500/20 focus:outline-none focus:border-indigo-400'
+                type="search"
+                placeholder="Search posts or hashtags..."
+                className="w-full md:w-64 bg-black/40 rounded-full py-2 pl-10 pr-4 text-sm border border-indigo-500/20 focus:outline-none focus:border-indigo-400"
               />
             </div>
           </div>
         </div>
 
-        <div className='p-4 md:p-6 grid grid-cols-1 md:grid-cols-12 gap-6'>
-          <div className='md:col-span-3 bg-black/40 rounded-xl p-4'>
-            <h3 className='text-lg font-semibold mb-4'>Subjects</h3>
-            <div className='flex md:flex-col gap-2 overflow-x-auto md:overflow-x-visible hide-scrollbar'>
-              {subjects.map((subject) => (
+        {/* Sidebar & Stats Section */}
+        <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div className="md:col-span-3 bg-black/40 rounded-xl p-4">
+            <h3 className="text-lg font-semibold mb-4">Platforms</h3>
+            <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-visible hide-scrollbar">
+              {platforms.map((platform) => (
                 <button
-                  key={subject.name}
-                  onClick={() => setActiveSubject(subject.name)}
-                  className={`flex-shrink-0 md:flex-shrink flex items-center gap-3 p-3 rounded-lg transition-colors ${
-                    activeSubject === subject.name
+                  key={platform.name}
+                  onClick={() => setActivePlatform(platform.name)}
+                  className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                    activePlatform === platform.name
                       ? "bg-indigo-500/20 text-indigo-300"
                       : "hover:bg-indigo-500/10"
                   }`}
                 >
-                  <span className='text-xl'>{subject.icon}</span>
-                  <span>{subject.name}</span>
+                  <span className="text-xl">{platform.icon}</span>
+                  <span>{platform.name}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className='md:col-span-9 space-y-6'>
-            <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
+          <div className="md:col-span-9 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {stats.map(({ label, value, icon: Icon }) => (
                 <div
                   key={label}
-                  className='bg-black/40 rounded-xl p-4 flex items-center gap-4'
+                  className="bg-black/40 rounded-xl p-4 flex items-center gap-4"
                 >
-                  <div className='w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center'>
-                    <Icon className='h-6 w-6 text-indigo-400' />
+                  <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                    <Icon className="h-6 w-6 text-indigo-400" />
                   </div>
                   <div>
-                    <div className='text-sm text-gray-400'>{label}</div>
-                    <div className='text-xl font-semibold'>{value}</div>
+                    <div className="text-sm text-gray-400">{label}</div>
+                    <div className="text-xl font-semibold">{value}</div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className='bg-black/40 rounded-xl p-6'>
-              <h3 className='text-xl font-semibold mb-4'>
-                {activeSubject} Topics
+            <div className="bg-black/40 rounded-xl p-6">
+              <h3 className="text-xl font-semibold mb-4">
+                {activePlatform} Categories
               </h3>
-              <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>
-                {subjects
-                  .find((s) => s.name === activeSubject)
-                  ?.topics.map((topic) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {platforms
+                  .find((p) => p.name === activePlatform)
+                  ?.categories.map((cat) => (
                     <div
-                      key={topic}
-                      className='bg-indigo-950/50 rounded-lg p-4 hover:bg-indigo-500/10 transition-colors cursor-pointer'
+                      key={cat}
+                      className="bg-indigo-950/50 rounded-lg p-4 hover:bg-indigo-500/10 transition-colors cursor-pointer"
                     >
-                      <div className='flex items-center justify-between mb-2'>
-                        <span className='font-medium'>{topic}</span>
-                        <ChevronRight className='h-4 w-4 text-indigo-400' />
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{cat}</span>
+                        <ChevronRight className="h-4 w-4 text-indigo-400" />
                       </div>
-                      <div className='h-2 bg-black/40 rounded-full overflow-hidden'>
+                      <div className="h-2 bg-black/40 rounded-full overflow-hidden">
                         <div
-                          className='h-full bg-gradient-to-r from-indigo-500 to-purple-500'
+                          className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
                           style={{ width: `${Math.random() * 100}%` }}
                         />
                       </div>
@@ -313,27 +305,25 @@ function Dashboard() {
               </div>
             </div>
 
-            <div className='bg-black/40 rounded-xl p-6'>
-              <h3 className='text-xl font-semibold mb-4'>
-                Recommended Practice
-              </h3>
-              <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+            <div className="bg-black/40 rounded-xl p-6">
+              <h3 className="text-xl font-semibold mb-4">Suggested Posts</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
-                  "Review: Quadratic Equations",
-                  "Practice: Scientific Method",
-                  "Quiz: Literary Analysis",
-                  "Test: World War II",
+                  "Quote: Start your week with motivation",
+                  "Tip: How to increase engagement",
+                  "Poll: What content works best?",
+                  "Trend: #ThrowbackThursday idea",
                 ].map((item) => (
                   <div
                     key={item}
-                    className='bg-indigo-950/50 rounded-lg p-4 hover:bg-indigo-500/10 transition-colors cursor-pointer flex items-center justify-between'
+                    className="bg-indigo-950/50 rounded-lg p-4 hover:bg-indigo-500/10 transition-colors cursor-pointer flex items-center justify-between"
                   >
                     <span>{item}</span>
                     <Button
-                      size='sm'
-                      className='bg-indigo-500 hover:bg-indigo-400'
+                      size="sm"
+                      className="bg-indigo-500 hover:bg-indigo-400"
                     >
-                      Start
+                      Generate
                     </Button>
                   </div>
                 ))}
@@ -349,28 +339,28 @@ function Dashboard() {
 function Features() {
   const features = [
     {
-      icon: Brain,
-      title: "AI-Powered Learning",
+      icon: Play,
+      title: "AI-Generated Posts",
       description:
-        "Our advanced AI algorithms adapt to your learning style and pace, providing personalized study plans and recommendations.",
+        "Leverage AI to create engaging, platform-optimized social media content tailored to your brand and audience.",
     },
     {
       icon: Sparkles,
-      title: "Instant Feedback",
+      title: "Instant Publishing",
       description:
-        "Get real-time feedback on your progress and performance, helping you identify areas for improvement and celebrate your successes.",
+        "Schedule or instantly publish posts across multiple platforms with a single click, saving you valuable time.",
     },
     {
       icon: Book,
-      title: "Comprehensive Library",
+      title: "Content Library",
       description:
-        "Access a vast library of study materials, practice questions, and resources across various subjects and difficulty levels.",
+        "Store and manage your best-performing posts, drafts, and ideas in one centralized, organized content hub.",
     },
     {
       icon: Clock,
-      title: "Smart Scheduling",
+      title: "Performance Insights",
       description:
-        "Our AI creates optimized study schedules that fit your lifestyle, ensuring you make the most of your study time.",
+        "Track likes, shares, reach, and more with real-time analytics that help you measure success and optimize future content.",
     },
   ];
 
@@ -400,23 +390,23 @@ function Testimonials() {
   const testimonials = [
     {
       quote:
-        "AutoLearn AI has completely transformed my study habits. I'm learning faster and retaining more information than ever before!",
+        "This app has completely changed how I manage my brand’s social media. Content creation and scheduling are now effortless!",
       author: "Sarah J.",
-      role: "College Student",
+      role: "Digital Marketer",
       avatar: "/Adewale-olufemi.jpg",
     },
     {
       quote:
-        "As a working professional, finding time to study was always a challenge. AutoLearn AI's smart scheduling has made it so much easier to balance work and learning.",
+        "As a busy entrepreneur, I needed a tool that could handle content and analytics. This app does it all — and brilliantly too.",
       author: "Michael T.",
-      role: "Software Engineer",
+      role: "Startup Founder",
       avatar: "/Adewale-olufemi.jpg",
     },
     {
       quote:
-        "The personalized learning paths have helped me focus on areas where I need the most improvement. It's like having a private tutor available 24/7!",
+        "The AI suggestions are on point, and the analytics help me improve my engagement every week. It's like having a full marketing team!",
       author: "Emily R.",
-      role: "High School Student",
+      role: "Content Creator",
       avatar: "/Adewale-olufemi.jpg",
     },
   ];
@@ -464,10 +454,10 @@ function Pricing() {
       name: "Basic",
       price: "$9.99",
       features: [
-        "Access to all basic subjects",
-        "Personalized study plans",
-        "Progress tracking",
-        "24/7 AI assistance",
+        "Generate AI-powered posts",
+        "Schedule up to 10 posts/month",
+        "Basic performance analytics",
+        "Multi-platform publishing",
       ],
     },
     {
@@ -475,10 +465,10 @@ function Pricing() {
       price: "$19.99",
       features: [
         "All Basic features",
-        "Advanced subjects and topics",
-        "Detailed analytics and insights",
-        "Priority AI assistance",
-        "Ad-free experience",
+        "Unlimited post scheduling",
+        "Advanced engagement insights",
+        "Hashtag and trend suggestions",
+        "Remove branding from posts",
       ],
     },
     {
@@ -486,10 +476,10 @@ function Pricing() {
       price: "$29.99",
       features: [
         "All Pro features",
-        "One-on-one tutoring sessions",
-        "Exclusive webinars and workshops",
-        "Early access to new features",
-        "Customizable learning paths",
+        "Team collaboration tools",
+        "Content strategy recommendations",
+        "API access and integrations",
+        "Priority support",
       ],
     },
   ];
@@ -522,7 +512,7 @@ function Pricing() {
                 </li>
               ))}
             </ul>
-            <Button className='w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'>
+            <Button effect="shineHover" className='w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'>
               Get Started
             </Button>
           </div>
@@ -538,9 +528,9 @@ function Footer() {
       <div className='container mx-auto px-4 py-8'>
         <div className='flex flex-col md:flex-row justify-between items-center'>
           <div className='flex items-center mb-4 md:mb-0'>
-            <Brain className='h-8 w-8 text-indigo-400 mr-2' />
+            <Play className='h-8 w-8 text-indigo-400 mr-2' />
             <span className='text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400'>
-              AutoLearn AI
+              Autoplay
             </span>
           </div>
           <nav className='flex flex-wrap justify-center gap-6'>
@@ -577,7 +567,7 @@ function Footer() {
           </nav>
         </div>
         <div className='mt-8 text-center text-gray-400'>
-          © 2025 AutoLearn AI. All rights reserved.
+          © 2025 Autoplay. All rights reserved.
         </div>
       </div>
     </footer>

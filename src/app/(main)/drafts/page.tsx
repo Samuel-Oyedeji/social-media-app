@@ -20,6 +20,7 @@ import {
   ToastDescription,
   ToastClose,
 } from '@/components/ui/toast';
+import emailjs from '@emailjs/browser';
 
 type Post = {
   id: string;
@@ -43,11 +44,36 @@ export default function DraftList() {
   const [newImage, setNewImage] = useState<FileList | null>(null);
   const [editMode, setEditMode] = useState<'content' | 'image' | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [postToShare, setPostToShare] = useState<Post | null>(null);
   const supabase = createClient();
 
   const showToast = (message: ToastMessage) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000); // Auto-dismiss after 3s
+  };
+
+  const sendEmail = async (to: string, subject: string, text: string) => {
+    try {
+      const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+      const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
+      const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+
+      if (!serviceId || !templateId || !publicKey) {
+        throw new Error('EmailJS configuration missing');
+      }
+
+      emailjs.init(publicKey);
+      const response = await emailjs.send(serviceId, templateId, {
+        to_email: to,
+        subject,
+        message: text,
+        from_name: 'YourApp',
+      });
+      console.log(`Email sent to ${to}: ${subject}`, response);
+    } catch (error) {
+      console.error('Error sending email via EmailJS:', error);
+    }
   };
 
   useEffect(() => {
@@ -96,26 +122,70 @@ export default function DraftList() {
     }
   };
 
-  const handlePublish = async (post: Post) => {
-    const { error } = await supabase
-      .from('posts')
-      .update({ is_draft: false })
-      .eq('id', post.id);
+  const handleSharePost = (post: Post) => {
+    setPostToShare(post);
+    setShareDialogOpen(true);
+  };
 
-    if (error) {
-      console.error('Error publishing draft:', error);
-      showToast({
-        title: 'Error',
-        description: 'Failed to publish draft.',
-        variant: 'destructive',
-      });
-    } else {
-      setPosts(posts.filter((p) => p.id !== post.id));
-      showToast({
-        title: 'Success',
-        description: 'Draft published!',
+  const handleShareToPlatform = async (platform: 'Twitter' | 'Instagram') => {
+    if (!postToShare) return;
+
+    // Construct share URL or action
+    if (platform === 'Twitter') {
+      const tweetText = encodeURIComponent(postToShare.content);
+      window.open(`https://twitter.com/intent/tweet?text=${tweetText}`, '_blank');
+    } else if (platform === 'Instagram') {
+      navigator.clipboard.writeText(postToShare.content).then(() => {
+        showToast({
+          title: 'Copied!',
+          description: 'Post content copied to clipboard. Opening Instagram...',
+        });
+        window.open('https://www.instagram.com', '_blank');
+      }).catch((err) => {
+        console.error('Failed to copy to clipboard:', err);
+        showToast({
+          title: 'Error',
+          description: 'Failed to copy content. Opening Instagram...',
+          variant: 'destructive',
+        });
+        window.open('https://www.instagram.com', '_blank');
       });
     }
+
+    // Update Supabase after sharing
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { error } = await supabase
+        .from('posts')
+        .update({ is_draft: false })
+        .eq('id', postToShare.id);
+
+      if (error) {
+        console.error('Error saving shared post:', error);
+        showToast({ title: 'Error', description: 'Failed to save post.', variant: 'destructive' });
+      } else {
+        setPosts(posts.filter((p) => p.id !== postToShare.id));
+        showToast({ title: 'Success', description: 'Post shared and saved!' });
+        if (user.email) {
+          const { data: settings } = await supabase
+            .from('user_settings')
+            .select('email_notifications')
+            .eq('user_id', user.id)
+            .single();
+
+          if (settings?.email_notifications) {
+            await sendEmail(
+              user.email,
+              'Post Shared',
+              `Your post for ${postToShare.platform} has been shared: ${postToShare.content}`
+            );
+          }
+        }
+      }
+    }
+
+    setShareDialogOpen(false);
+    setPostToShare(null);
   };
 
   const handleEditContent = (post: Post) => {
@@ -236,7 +306,7 @@ export default function DraftList() {
                 <div className="flex gap-2 mt-2">
                   <Button onClick={() => handleEditContent(post)}>Edit Content</Button>
                   <Button onClick={() => handleEditImage(post)}>Edit Image</Button>
-                  <Button onClick={() => handlePublish(post)}>Publish</Button>
+                  <Button onClick={() => handleSharePost(post)}>Share</Button>
                   <Button
                     variant="destructive"
                     onClick={() => handleDelete(post.id)}
@@ -282,6 +352,21 @@ export default function DraftList() {
             </DialogContent>
           </Dialog>
         )}
+        <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Share Post</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Button onClick={() => handleShareToPlatform('Twitter')}>
+                Share to Twitter
+              </Button>
+              <Button onClick={() => handleShareToPlatform('Instagram')}>
+                Share to Instagram
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
       <ToastViewport />
       {toastMessage && (

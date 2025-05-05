@@ -22,7 +22,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -176,18 +176,37 @@ type ToastMessage = {
   variant?: 'default' | 'destructive';
 };
 
+// List of Gemini models to randomly select from
+const GEMINI_MODELS = [
+  'gemini-2.5-flash-preview-04-17',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash-8b',
+  'gemini-2.0-flash',
+  'gemini-1.5-pro',
+  'gemini-1.5-flash',
+];
+
+// Prompt templates for variety
+const PROMPT_TEMPLATES = [
+  `Generate 3 concise and engaging ${'platform'} posts based on the context: ${'context'}. Use humor types: ${'humor'}. Keep posts under 280 characters for Twitter or visually appealing for Instagram. Make the 3 posts significantly different from eachother and only send the post, nothing else.`,
+  `Create 3 unique ${'platform'} posts using the context: ${'context'}. Incorporate humor styles: ${'humor'}. Ensure variety and brevity (Twitter < 280 chars, Instagram visual focus). Make the 3 posts significantly different from eachother and only send the post, nothing else.`,
+  `Craft 3 diverse ${'platform'} posts from the context: ${'context'}. Apply humor: ${'humor'}. Aim for fresh perspectives, under 280 chars for Twitter or Instagram-ready. Make the 3 posts significantly different from eachother and only send the post, nothing else.`,
+];
+
 export default function PostGenerator({ userGenres }: { userGenres: string[] }) {
   const [open, setOpen] = useState(false);
   const [posts, setPosts] = useState<GeneratedPost[]>([]);
   const [selectedPost, setSelectedPost] = useState<GeneratedPost | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [postToShare, setPostToShare] = useState<GeneratedPost | null>(null);
   const supabase = createClient();
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
     defaultValues: {
       platform: 'Instagram',
-      genres: userGenres,
+      genres: [], // Start with no genres selected
       humor: ['Normal'],
       image: undefined,
     },
@@ -195,7 +214,7 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
 
   const showToast = (message: ToastMessage) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000); // Auto-dismiss after 3s
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   const sendEmail = async (to: string, subject: string, text: string) => {
@@ -208,17 +227,13 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
         throw new Error('EmailJS configuration missing');
       }
 
-      console.log('Initializing EmailJS with public key');
       emailjs.init(publicKey);
-
-      console.log('Sending email to:', to, 'with subject:', subject);
       const response = await emailjs.send(serviceId, templateId, {
         to_email: to,
         subject,
         message: text,
         from_name: 'YourApp',
       });
-
       console.log(`Email sent to ${to}: ${subject}`, response);
     } catch (error) {
       console.error('Error sending email via EmailJS:', error);
@@ -227,157 +242,94 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
 
   const onSubmit = async (data: PostFormValues) => {
     try {
-      // Step 1: Fetch genre-related content using SerpAPI
-      const serpApiKey = process.env.NEXT_PUBLIC_SERPAPI_KEY;
-      if (!serpApiKey) {
-        showToast({
-          title: 'Error',
-          description: 'SerpAPI key is missing. Please add it to .env.local.',
-          variant: 'destructive',
-        });
-        return;
-      }
+      // Fetch genre-related content via the API route
       const searchQueries = data.genres.map((genre) => `${genre} latest news`);
       const scrapedData = await Promise.all(
         searchQueries.map(async (query) => {
-          try {
-            const response = await fetch(
-              `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${serpApiKey}`
-            );
-            if (!response.ok) throw new Error(`SerpAPI error: ${response.statusText}`);
-            const results = await response.json();
-            console.log('SerpAPI response:', results);
-            return (
-              results.organic_results?.slice(0, 3).map((result: any) => ({
-                title: result.title,
-                snippet: result.snippet,
-                link: result.link,
-              })) || []
-            );
-          } catch (error) {
-            console.error(`SerpAPI error for query "${query}":`, error);
-            return [];
-          }
+          const response = await fetch(`/api/serpapi?query=${encodeURIComponent(query)}`);
+          if (!response.ok) throw new Error(`SerpAPI proxy error: ${response.statusText}`);
+          const results = await response.json();
+          if (results.error) throw new Error(results.error);
+          return results.organic_results?.slice(0, 3).map((result: any) => ({
+            title: result.title,
+            snippet: result.snippet,
+            link: result.link,
+          })) || [];
         })
       );
+      const context = scrapedData.flat().map((item) => `${item.title}: ${item.snippet}`).join('\n') || 'No context available';
 
-      const context = scrapedData.flat().map((item) => `${item.title}: ${item.snippet}`).join('\n');
-      if (!context) {
-        showToast({
-          title: 'Warning',
-          description: 'No relevant context found. Generating post without context.',
-        });
-      }
-
-      // Step 2: Generate posts using Gemini API
+      // Generate posts with a randomly selected Gemini model and prompt
       const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if (!geminiApiKey) {
         showToast({
           title: 'Error',
-          description: 'Gemini API key is missing. Please add it to .env.local.',
+          description: 'Gemini API key is missing.',
           variant: 'destructive',
         });
         return;
       }
+      const selectedModel = GEMINI_MODELS[Math.floor(Math.random() * GEMINI_MODELS.length)];
+      console.log(`Using Gemini model: ${selectedModel}`);
+      const randomPrompt = PROMPT_TEMPLATES[Math.floor(Math.random() * PROMPT_TEMPLATES.length)]
+        .replace('platform', data.platform)
+        .replace('context', context)
+        .replace('humor', data.humor.join(', '));
       const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${geminiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${geminiApiKey}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `Generate 3 concise and engaging ${data.platform} posts based on the following context: ${context || 'No context available'}. Use humor types: ${data.humor.join(', ')}. Each post should be suitable for ${data.platform} and under 280 characters for Twitter or visually appealing for Instagram.`,
-                  },
-                ],
-              },
-            ],
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: randomPrompt }] }] }),
         }
       );
       if (!geminiResponse.ok) throw new Error(`Gemini API error: ${geminiResponse.statusText}`);
       const geminiData = await geminiResponse.json();
-      console.log('Gemini API response:', geminiData);
-      const generatedPosts =
-        geminiData.candidates?.map((candidate: any, index: number) => ({
-          id: `post-${index}`,
-          content: candidate.content.parts[0].text,
-        })) || [];
+      const generatedPosts = geminiData.candidates?.map((candidate: any, index: number) => ({
+        id: `post-${index}`,
+        content: candidate.content.parts[0].text,
+      })) || [];
 
       if (generatedPosts.length === 0) {
         showToast({
           title: 'Error',
-          description: 'No posts generated. Please try again.',
+          description: 'No posts generated.',
           variant: 'destructive',
         });
         return;
       }
 
-      // Step 3: Handle image (custom upload or Unsplash)
+      // Enhance image suggestions
       let imageUrl = '';
       if (data.image && data.image.length > 0) {
         const file = data.image[0];
         const fileExt = file.name.split('.').pop();
         const fileName = `post-${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from('posts')
-          .upload(fileName, file);
-
-        if (uploadError) {
-          console.error('Error uploading image:', uploadError);
-          showToast({
-            title: 'Error',
-            description: 'Failed to upload image.',
-            variant: 'destructive',
-          });
-          return;
-        }
-
+        const { error: uploadError } = await supabase.storage.from('posts').upload(fileName, file);
+        if (uploadError) throw uploadError;
         const { data: urlData } = supabase.storage.from('posts').getPublicUrl(fileName);
         imageUrl = urlData.publicUrl;
       } else if (data.platform === 'Instagram') {
         const unsplashApiKey = process.env.NEXT_PUBLIC_UNSPLASH_API_KEY;
         if (!unsplashApiKey) {
-          showToast({
-            title: 'Warning',
-            description: 'Unsplash API key is missing. No image will be included.',
-          });
+          showToast({ title: 'Warning', description: 'Unsplash API key missing.' });
         } else {
-          try {
-            const unsplashResponse = await fetch(
-              `https://api.unsplash.com/search/photos?query=${encodeURIComponent(data.genres[0])}&per_page=1&client_id=${unsplashApiKey}`
-            );
-            if (!unsplashResponse.ok) throw new Error(`Unsplash API error: ${unsplashResponse.statusText}`);
-            const unsplashData = await unsplashResponse.json();
-            console.log('Unsplash API response:', unsplashData);
-            imageUrl = unsplashData.results[0]?.urls.regular || '';
-          } catch (error) {
-            console.error('Unsplash API error:', error);
-            showToast({
-              title: 'Warning',
-              description: 'Failed to fetch image from Unsplash.',
-            });
-          }
+          const randomGenre = data.genres[Math.floor(Math.random() * data.genres.length)];
+          const query = encodeURIComponent(`${randomGenre} creative ${['nature', 'urban', 'abstract'][Math.floor(Math.random() * 3)]}`);
+          const unsplashResponse = await fetch(
+            `https://api.unsplash.com/search/photos?query=${query}&per_page=1&client_id=${unsplashApiKey}`
+          );
+          if (!unsplashResponse.ok) throw new Error(`Unsplash error: ${unsplashResponse.statusText}`);
+          const unsplashData = await unsplashResponse.json();
+          imageUrl = unsplashData.results[0]?.urls.regular || (await fetchDefaultImage(unsplashApiKey));
         }
       }
 
-      setPosts(
-        generatedPosts.map((post: GeneratedPost) => ({
-          ...post,
-          image: imageUrl || undefined,
-        }))
-      );
-      showToast({
-        title: 'Success',
-        description: `${generatedPosts.length} posts generated!`,
-      });
+      setPosts(generatedPosts.map((post: GeneratedPost) => ({ ...post, image: imageUrl || undefined })));
+      showToast({ title: 'Success', description: `${generatedPosts.length} posts generated!` });
       setOpen(false);
 
-      // Step 4: Notify user if email_notifications is enabled
+      // Email notification
       const { data: { user } } = await supabase.auth.getUser();
       if (user && user.email) {
         const { data: settings } = await supabase
@@ -385,12 +337,11 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
           .select('email_notifications')
           .eq('user_id', user.id)
           .single();
-
         if (settings?.email_notifications) {
           await sendEmail(
             user.email,
             'Posts Generated',
-            `Successfully generated ${generatedPosts.length} posts for ${data.platform}.`
+            `Successfully generated ${generatedPosts.length} posts for ${data.platform} using model ${selectedModel}.`
           );
         }
       }
@@ -398,16 +349,25 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
       console.error('Error generating posts:', error);
       showToast({
         title: 'Error',
-        description: 'Failed to generate posts. Please try again.',
+        description: 'Failed to generate posts.',
         variant: 'destructive',
       });
     }
   };
 
+  // Fallback image function
+  async function fetchDefaultImage(unsplashApiKey: string) {
+    const defaultQuery = encodeURIComponent('creative abstract');
+    const response = await fetch(
+      `https://api.unsplash.com/search/photos?query=${defaultQuery}&per_page=1&client_id=${unsplashApiKey}`
+    );
+    const data = await response.json();
+    return data.results[0]?.urls.regular || '';
+  }
+
   const handleSaveDraft = async (post: GeneratedPost) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
     const { error } = await supabase.from('posts').insert({
       user_id: user.id,
       platform: form.getValues('platform'),
@@ -415,29 +375,18 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
       image: post.image,
       is_draft: true,
     });
-
     if (error) {
       console.error('Error saving draft:', error);
-      showToast({
-        title: 'Error',
-        description: 'Failed to save draft.',
-        variant: 'destructive',
-      });
+      showToast({ title: 'Error', description: 'Failed to save draft.', variant: 'destructive' });
     } else {
       setPosts(posts.filter((p) => p.id !== post.id));
-      showToast({
-        title: 'Success',
-        description: 'Draft saved!',
-      });
-
-      // Notify user if email_notifications is enabled
+      showToast({ title: 'Success', description: 'Draft saved!' });
       if (user.email) {
         const { data: settings } = await supabase
           .from('user_settings')
           .select('email_notifications')
           .eq('user_id', user.id)
           .single();
-
         if (settings?.email_notifications) {
           await sendEmail(
             user.email,
@@ -449,49 +398,73 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
     }
   };
 
-  const handlePublishPost = async (post: GeneratedPost) => {
+  const handleSharePost = (post: GeneratedPost) => {
+    setPostToShare(post);
+    setShareDialogOpen(true);
+  };
+
+  const handleShareToPlatform = async (platform: 'Twitter' | 'Instagram') => {
+    if (!postToShare) return;
+
+    // Construct share URL or action
+    if (platform === 'Twitter') {
+      const tweetText = encodeURIComponent(postToShare.content);
+      window.open(`https://twitter.com/intent/tweet?text=${tweetText}`, '_blank');
+    } else if (platform === 'Instagram') {
+      // Copy content to clipboard
+      navigator.clipboard.writeText(postToShare.content).then(() => {
+        showToast({
+          title: 'Copied!',
+          description: 'Post content copied to clipboard. Opening Instagram...',
+        });
+        // Open Instagram
+        window.open('https://www.instagram.com', '_blank');
+      }).catch((err) => {
+        console.error('Failed to copy to clipboard:', err);
+        showToast({
+          title: 'Error',
+          description: 'Failed to copy content. Opening Instagram...',
+          variant: 'destructive',
+        });
+        window.open('https://www.instagram.com', '_blank');
+      });
+    }
+
+    // Save to Supabase after sharing
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { error } = await supabase.from('posts').insert({
-      user_id: user.id,
-      platform: form.getValues('platform'),
-      content: post.content,
-      image: post.image,
-      is_draft: false,
-    });
-
-    if (error) {
-      console.error('Error publishing post:', error);
-      showToast({
-        title: 'Error',
-        description: 'Failed to publish post.',
-        variant: 'destructive',
+    if (user) {
+      const { error } = await supabase.from('posts').insert({
+        user_id: user.id,
+        platform: form.getValues('platform'),
+        content: postToShare.content,
+        image: postToShare.image,
+        is_draft: false,
       });
-    } else {
-      setPosts(posts.filter((p) => p.id !== post.id));
-      showToast({
-        title: 'Success',
-        description: 'Post published!',
-      });
-
-      // Notify user if email_notifications is enabled
-      if (user.email) {
-        const { data: settings } = await supabase
-          .from('user_settings')
-          .select('email_notifications')
-          .eq('user_id', user.id)
-          .single();
-
-        if (settings?.email_notifications) {
-          await sendEmail(
-            user.email,
-            'Post Published',
-            `Your post for ${form.getValues('platform')} has been published: ${post.content}`
-          );
+      if (error) {
+        console.error('Error saving shared post:', error);
+        showToast({ title: 'Error', description: 'Failed to save post.', variant: 'destructive' });
+      } else {
+        setPosts(posts.filter((p) => p.id !== postToShare.id));
+        showToast({ title: 'Success', description: 'Post shared and saved!' });
+        if (user.email) {
+          const { data: settings } = await supabase
+            .from('user_settings')
+            .select('email_notifications')
+            .eq('user_id', user.id)
+            .single();
+          if (settings?.email_notifications) {
+            await sendEmail(
+              user.email,
+              'Post Shared',
+              `Your post for ${form.getValues('platform')} has been shared: ${postToShare.content}`
+            );
+          }
         }
       }
     }
+
+    setShareDialogOpen(false);
+    setPostToShare(null);
   };
 
   const handleEditPost = (post: GeneratedPost) => {
@@ -502,10 +475,7 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
     if (!selectedPost) return;
     setPosts(posts.map((p) => (p.id === selectedPost.id ? { ...p, content } : p)));
     setSelectedPost(null);
-    showToast({
-      title: 'Success',
-      description: 'Post updated!',
-    });
+    showToast({ title: 'Success', description: 'Post updated!' });
   };
 
   return (
@@ -552,26 +522,23 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
                         {GENRES.map((group) => (
                           <div key={group.category} className="mb-2">
                             <h3 className="font-semibold">{group.category}</h3>
-                            {group.options
-                              .filter((option) => userGenres.includes(option))
-                              .map((option) => (
-                                <div key={option} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`genre-${option}`}
-                                    checked={field.value.includes(option)}
-                                    onCheckedChange={(checked) => {
-                                      console.log(`Genre ${option} checked:`, checked);
-                                      const newGenres = checked
-                                        ? [...field.value, option]
-                                        : field.value.filter((g) => g !== option);
-                                      field.onChange(newGenres);
-                                    }}
-                                  />
-                                  <label htmlFor={`genre-${option}`} className="text-sm">
-                                    {option}
-                                  </label>
-                                </div>
-                              ))}
+                            {group.options.map((option) => (
+                              <div key={option} className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`genre-${option}`}
+                                  checked={field.value.includes(option)}
+                                  onCheckedChange={(checked) => {
+                                    const newGenres = checked
+                                      ? [...field.value, option]
+                                      : field.value.filter((g) => g !== option);
+                                    field.onChange(newGenres);
+                                  }}
+                                />
+                                <label htmlFor={`genre-${option}`} className="text-sm">
+                                  {option}
+                                </label>
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
@@ -592,7 +559,6 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
                               id={`humor-${humor}`}
                               checked={field.value.includes(humor)}
                               onCheckedChange={(checked) => {
-                                console.log(`Humor ${humor} checked:`, checked);
                                 const newHumor = checked
                                   ? [...field.value, humor]
                                   : field.value.filter((h) => h !== humor);
@@ -643,7 +609,7 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
                 <div className="flex gap-2 mt-2">
                   <Button onClick={() => handleEditPost(post)}>Edit</Button>
                   <Button onClick={() => handleSaveDraft(post)}>Save Draft</Button>
-                  <Button onClick={() => handlePublishPost(post)}>Publish</Button>
+                  <Button onClick={() => handleSharePost(post)}>Share</Button>
                 </div>
               </CardContent>
             </Card>
@@ -666,6 +632,21 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
             </DialogContent>
           </Dialog>
         )}
+        <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Share Post</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Button onClick={() => handleShareToPlatform('Twitter')}>
+                Share to Twitter
+              </Button>
+              <Button onClick={() => handleShareToPlatform('Instagram')}>
+                Share to Instagram
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
       <ToastViewport />
       {toastMessage && (

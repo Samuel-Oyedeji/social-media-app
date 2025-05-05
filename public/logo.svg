@@ -1,0 +1,25 @@
+<svg width="50" height="50" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sunGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00A3FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFC107;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Sun with rays -->
+  <circle cx="25" cy="25" r="15" fill="url(#sunGradient)" />
+  <path d="M25 10L27 15H23L25 10Z" fill="url(#sunGradient)" />
+  <path d="M25 40L27 35H23L25 40Z" fill="url(#sunGradient)" />
+  <path d="M10 25L15 27V23L10 25Z" fill="url(#sunGradient)" />
+  <path d="M40 25L35 27V23L40 25Z" fill="url(#sunGradient)" />
+  <path d="M15 15L17 19L13 17L15 15Z" fill="url(#sunGradient)" />
+  <path d="M35 35L33 31L37 33L35 35Z" fill="url(#sunGradient)" />
+  <path d="M15 35L13 31L17 33L15 35Z" fill="url(#sunGradient)" />
+  <path d="M35 15L37 19L33 17L35 15Z" fill="url(#sunGradient)" />
+  <!-- Leaves -->
+  <path d="M15 10C13 8 10 8 10 10C10 12 12 14 15 15C18 16 20 14 20 12C20 10 18 8 15 10Z" fill="#2E7D32" />
+  <path d="M35 10C37 8 40 8 40 10C40 12 38 14 35 15C32 16 30 14 30 12C30 10 32 8 35 10Z" fill="#2E7D32" />
+  <path d="M10 25C8 23 8 20 10 20C12 20 14 22 15 25C16 28 14 30 12 30C10 30 8 28 10 25Z" fill="#2E7D32" />
+  <path d="M40 25C42 23 42 20 40 20C38 20 36 22 35 25C34 28 36 30 38 30C40 30 42 28 40 25Z" fill="#2E7D32" />
+  <!-- Spiral/"S" -->
+  <path d="M25 35C30 40 35 40 35 35C35 30 30 25 25 25C20 20 15 20 15 25C15 30 20 35 25 35C30 40 35 40 35 35" stroke="#00A3FF" stroke-width="2" fill="none" />
+</svg>

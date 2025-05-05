@@ -13,7 +13,7 @@ body {
 }
 
 @layer base {
-   :root {
+  :root {
     --background: 0 0% 90%; /* Very light gray to reduce harshness */
     --foreground: 222.2 85% 5%; /* Deep black for strong text contrast */
     --card: 0 0% 98%; /* Slightly lighter than background for distinction */
@@ -69,7 +69,6 @@ body {
   }
 }
 
-
 @layer base {
   * {
     @apply border-border;
@@ -77,9 +76,10 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+  header {
+    @apply bg-card border-b border-border;
+  }
 }
-
-
 
 @keyframes fadeIn {
   from { opacity: 0; }

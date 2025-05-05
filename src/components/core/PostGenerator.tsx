@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -35,6 +35,8 @@ import {
   ToastDescription,
   ToastClose,
 } from '@/components/ui/toast';
+import PostCarousel from './PostCarousel';
+import LoadingScreen from './LoadingScreen';
 
 const HUMOR_TYPES = [
   'Informative',
@@ -188,9 +190,9 @@ const GEMINI_MODELS = [
 
 // Prompt templates for variety
 const PROMPT_TEMPLATES = [
-  `Generate 3 concise and engaging ${'platform'} posts based on the context: ${'context'}. Use humor types: ${'humor'}. Keep posts under 280 characters for Twitter or visually appealing for Instagram. Make the 3 posts significantly different from eachother and only send the post, nothing else.`,
-  `Create 3 unique ${'platform'} posts using the context: ${'context'}. Incorporate humor styles: ${'humor'}. Ensure variety and brevity (Twitter < 280 chars, Instagram visual focus). Make the 3 posts significantly different from eachother and only send the post, nothing else.`,
-  `Craft 3 diverse ${'platform'} posts from the context: ${'context'}. Apply humor: ${'humor'}. Aim for fresh perspectives, under 280 chars for Twitter or Instagram-ready. Make the 3 posts significantly different from eachother and only send the post, nothing else.`,
+  `Generate 3 concise and engaging ${'platform'} posts based on the context: ${'context'}. Use humor types: ${'humor'}. Keep posts under 280 characters for Twitter or visually appealing for Instagram. Make each post significantly different from the other and send only the post, nothing else. Number each post as 1., 2., 3.`,
+  `Create 3 unique ${'platform'} posts using the context: ${'context'}. Incorporate humor styles: ${'humor'}. Ensure variety and brevity (Twitter < 280 chars, Instagram visual focus). Make each post significantly different from the other and send only the post, nothing else. Number each post as 1., 2., 3.`,
+  `Craft 3 diverse ${'platform'} posts from the context: ${'context'}. Apply humor: ${'humor'}. Aim for fresh perspectives, under 280 chars for Twitter or Instagram-ready. Make each post significantly different from the other and send only the post, nothing else. Number each post as 1., 2., 3.`,
 ];
 
 export default function PostGenerator({ userGenres }: { userGenres: string[] }) {
@@ -200,17 +202,9 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
   const [toastMessage, setToastMessage] = useState<ToastMessage | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [postToShare, setPostToShare] = useState<GeneratedPost | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState('Gathering Ideas…');
   const supabase = createClient();
-
-  const form = useForm<PostFormValues>({
-    resolver: zodResolver(postFormSchema),
-    defaultValues: {
-      platform: 'Instagram',
-      genres: [], // Start with no genres selected
-      humor: ['Normal'],
-      image: undefined,
-    },
-  });
 
   const showToast = (message: ToastMessage) => {
     setToastMessage(message);
@@ -240,130 +234,16 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
     }
   };
 
-  const onSubmit = async (data: PostFormValues) => {
-    try {
-      // Fetch genre-related content via the API route
-      const searchQueries = data.genres.map((genre) => `${genre} latest news`);
-      const scrapedData = await Promise.all(
-        searchQueries.map(async (query) => {
-          const response = await fetch(`/api/serpapi?query=${encodeURIComponent(query)}`);
-          if (!response.ok) throw new Error(`SerpAPI proxy error: ${response.statusText}`);
-          const results = await response.json();
-          if (results.error) throw new Error(results.error);
-          return results.organic_results?.slice(0, 3).map((result: any) => ({
-            title: result.title,
-            snippet: result.snippet,
-            link: result.link,
-          })) || [];
-        })
-      );
-      const context = scrapedData.flat().map((item) => `${item.title}: ${item.snippet}`).join('\n') || 'No context available';
-
-      // Generate posts with a randomly selected Gemini model and prompt
-      const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (!geminiApiKey) {
-        showToast({
-          title: 'Error',
-          description: 'Gemini API key is missing.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      const selectedModel = GEMINI_MODELS[Math.floor(Math.random() * GEMINI_MODELS.length)];
-      console.log(`Using Gemini model: ${selectedModel}`);
-      const randomPrompt = PROMPT_TEMPLATES[Math.floor(Math.random() * PROMPT_TEMPLATES.length)]
-        .replace('platform', data.platform)
-        .replace('context', context)
-        .replace('humor', data.humor.join(', '));
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${geminiApiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: randomPrompt }] }] }),
-        }
-      );
-      if (!geminiResponse.ok) throw new Error(`Gemini API error: ${geminiResponse.statusText}`);
-      const geminiData = await geminiResponse.json();
-      const generatedPosts = geminiData.candidates?.map((candidate: any, index: number) => ({
-        id: `post-${index}`,
-        content: candidate.content.parts[0].text,
-      })) || [];
-
-      if (generatedPosts.length === 0) {
-        showToast({
-          title: 'Error',
-          description: 'No posts generated.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Enhance image suggestions
-      let imageUrl = '';
-      if (data.image && data.image.length > 0) {
-        const file = data.image[0];
-        const fileExt = file.name.split('.').pop();
-        const fileName = `post-${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('posts').upload(fileName, file);
-        if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage.from('posts').getPublicUrl(fileName);
-        imageUrl = urlData.publicUrl;
-      } else if (data.platform === 'Instagram') {
-        const unsplashApiKey = process.env.NEXT_PUBLIC_UNSPLASH_API_KEY;
-        if (!unsplashApiKey) {
-          showToast({ title: 'Warning', description: 'Unsplash API key missing.' });
-        } else {
-          const randomGenre = data.genres[Math.floor(Math.random() * data.genres.length)];
-          const query = encodeURIComponent(`${randomGenre} creative ${['nature', 'urban', 'abstract'][Math.floor(Math.random() * 3)]}`);
-          const unsplashResponse = await fetch(
-            `https://api.unsplash.com/search/photos?query=${query}&per_page=1&client_id=${unsplashApiKey}`
-          );
-          if (!unsplashResponse.ok) throw new Error(`Unsplash error: ${unsplashResponse.statusText}`);
-          const unsplashData = await unsplashResponse.json();
-          imageUrl = unsplashData.results[0]?.urls.regular || (await fetchDefaultImage(unsplashApiKey));
-        }
-      }
-
-      setPosts(generatedPosts.map((post: GeneratedPost) => ({ ...post, image: imageUrl || undefined })));
-      showToast({ title: 'Success', description: `${generatedPosts.length} posts generated!` });
-      setOpen(false);
-
-      // Email notification
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && user.email) {
-        const { data: settings } = await supabase
-          .from('user_settings')
-          .select('email_notifications')
-          .eq('user_id', user.id)
-          .single();
-        if (settings?.email_notifications) {
-          await sendEmail(
-            user.email,
-            'Posts Generated',
-            `Successfully generated ${generatedPosts.length} posts for ${data.platform} using model ${selectedModel}.`
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Error generating posts:', error);
-      showToast({
-        title: 'Error',
-        description: 'Failed to generate posts.',
-        variant: 'destructive',
-      });
-    }
+  const handleEditPost = (post: GeneratedPost) => {
+    setSelectedPost(post);
   };
 
-  // Fallback image function
-  async function fetchDefaultImage(unsplashApiKey: string) {
-    const defaultQuery = encodeURIComponent('creative abstract');
-    const response = await fetch(
-      `https://api.unsplash.com/search/photos?query=${defaultQuery}&per_page=1&client_id=${unsplashApiKey}`
-    );
-    const data = await response.json();
-    return data.results[0]?.urls.regular || '';
-  }
+  const handleUpdatePost = async (content: string) => {
+    if (!selectedPost) return;
+    setPosts(posts.map((p) => (p.id === selectedPost.id ? { ...p, content } : p)));
+    setSelectedPost(null);
+    showToast({ title: 'Success', description: 'Post updated!' });
+  };
 
   const handleSaveDraft = async (post: GeneratedPost) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -406,18 +286,15 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
   const handleShareToPlatform = async (platform: 'Twitter' | 'Instagram') => {
     if (!postToShare) return;
 
-    // Construct share URL or action
     if (platform === 'Twitter') {
       const tweetText = encodeURIComponent(postToShare.content);
       window.open(`https://twitter.com/intent/tweet?text=${tweetText}`, '_blank');
     } else if (platform === 'Instagram') {
-      // Copy content to clipboard
       navigator.clipboard.writeText(postToShare.content).then(() => {
         showToast({
           title: 'Copied!',
           description: 'Post content copied to clipboard. Opening Instagram...',
         });
-        // Open Instagram
         window.open('https://www.instagram.com', '_blank');
       }).catch((err) => {
         console.error('Failed to copy to clipboard:', err);
@@ -430,7 +307,6 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
       });
     }
 
-    // Save to Supabase after sharing
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { error } = await supabase.from('posts').insert({
@@ -467,16 +343,153 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
     setPostToShare(null);
   };
 
-  const handleEditPost = (post: GeneratedPost) => {
-    setSelectedPost(post);
+  const form = useForm<PostFormValues>({
+    resolver: zodResolver(postFormSchema),
+    defaultValues: {
+      platform: 'Instagram',
+      genres: [],
+      humor: ['Normal'],
+      image: undefined,
+    },
+  });
+
+  const onSubmit = async (data: PostFormValues) => {
+    setLoading(true);
+    setLoadingStep('Gathering Ideas…');
+
+    try {
+      const searchQueries = data.genres.map((genre) => `${genre} latest news`);
+      const scrapedData = await Promise.all(
+        searchQueries.map(async (query) => {
+          const response = await fetch(`/api/serpapi?query=${encodeURIComponent(query)}`);
+          if (!response.ok) throw new Error(`SerpAPI proxy error: ${response.statusText}`);
+          const results = await response.json();
+          if (results.error) throw new Error(results.error);
+          return results.organic_results?.slice(0, 3).map((result: any) => ({
+            title: result.title,
+            snippet: result.snippet,
+            link: result.link,
+          })) || [];
+        })
+      );
+      const context = scrapedData.flat().map((item) => `${item.title}: ${item.snippet}`).join('\n') || 'No context available';
+
+      setLoadingStep('Writing Posts…');
+
+      const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!geminiApiKey) {
+        showToast({
+          title: 'Error',
+          description: 'Gemini API key is missing.',
+          variant: 'destructive',
+        });
+        setLoading(false);
+        return;
+      }
+      const selectedModel = GEMINI_MODELS[Math.floor(Math.random() * GEMINI_MODELS.length)];
+      console.log(`Using Gemini model: ${selectedModel}`);
+      const randomPrompt = PROMPT_TEMPLATES[Math.floor(Math.random() * PROMPT_TEMPLATES.length)]
+        .replace('platform', data.platform)
+        .replace('context', context)
+        .replace('humor', data.humor.join(', '));
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: randomPrompt }] }] }),
+        }
+      );
+      if (!geminiResponse.ok) throw new Error(`Gemini API error: ${geminiResponse.statusText}`);
+      const geminiData = await geminiResponse.json();
+      const rawContent = geminiData.candidates?.[0]?.content?.parts[0]?.text || '';
+      const separatedPosts: GeneratedPost[] = rawContent
+        .split('\n')
+        .filter((post: string) => post.trim().length > 0)
+        .slice(0, 3) // Ensure we get up to 3 posts
+        .map((content: string, index: number) => ({
+          id: `post-${Date.now()}-${index}`,
+          content: content.trim(),
+        }));
+
+      if (separatedPosts.length === 0) {
+        showToast({
+          title: 'Error',
+          description: 'No posts generated.',
+          variant: 'destructive',
+        });
+        setLoading(false);
+        return;
+      }
+
+      setLoadingStep('Adding Visuals…');
+
+      let imageUrl = '';
+      if (data.image && data.image.length > 0) {
+        const file = data.image[0];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `post-${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('posts').upload(fileName, file);
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('posts').getPublicUrl(fileName);
+        imageUrl = urlData.publicUrl;
+      } else if (data.platform === 'Instagram') {
+        const unsplashApiKey = process.env.NEXT_PUBLIC_UNSPLASH_API_KEY;
+        if (!unsplashApiKey) {
+          showToast({ title: 'Warning', description: 'Unsplash API key missing.' });
+        } else {
+          const randomGenre = data.genres[Math.floor(Math.random() * data.genres.length)];
+          const query = encodeURIComponent(`${randomGenre} creative ${['nature', 'urban', 'abstract'][Math.floor(Math.random() * 3)]}`);
+          const unsplashResponse = await fetch(
+            `https://api.unsplash.com/search/photos?query=${query}&per_page=1&client_id=${unsplashApiKey}`
+          );
+          if (!unsplashResponse.ok) throw new Error(`Unsplash error: ${unsplashResponse.statusText}`);
+          const unsplashData = await unsplashResponse.json();
+          imageUrl = unsplashData.results[0]?.urls.regular || (await fetchDefaultImage(unsplashApiKey));
+        }
+      }
+
+      setLoadingStep('Finalizing…');
+
+      setPosts(separatedPosts.map((post: GeneratedPost) => ({ ...post, image: imageUrl || undefined })));
+      showToast({ title: 'Success', description: `${separatedPosts.length} posts generated!` });
+      setOpen(false);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && user.email) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('email_notifications')
+          .eq('user_id', user.id)
+          .single();
+        if (settings?.email_notifications) {
+          await sendEmail(
+            user.email,
+            'Posts Generated',
+            `Successfully generated ${separatedPosts.length} posts for ${data.platform} using model ${selectedModel}.`
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error generating posts:', error);
+      showToast({
+        title: 'Error',
+        description: 'Failed to generate posts.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUpdatePost = async (content: string) => {
-    if (!selectedPost) return;
-    setPosts(posts.map((p) => (p.id === selectedPost.id ? { ...p, content } : p)));
-    setSelectedPost(null);
-    showToast({ title: 'Success', description: 'Post updated!' });
-  };
+  async function fetchDefaultImage(unsplashApiKey: string) {
+    const defaultQuery = encodeURIComponent('creative abstract');
+    const response = await fetch(
+      `https://api.unsplash.com/search/photos?query=${defaultQuery}&per_page=1&client_id=${unsplashApiKey}`
+    );
+    const data = await response.json();
+    return data.results[0]?.urls.regular || '';
+  }
 
   return (
     <ToastProvider>
@@ -489,132 +502,126 @@ export default function PostGenerator({ userGenres }: { userGenres: string[] }) 
             <DialogHeader>
               <DialogTitle>Generate a Post</DialogTitle>
             </DialogHeader>
-            <FormProvider {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="platform"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Platform</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+            {loading ? (
+              <LoadingScreen step={loadingStep} />
+            ) : (
+              <FormProvider {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="platform"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Platform</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select platform" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Instagram">Instagram</SelectItem>
+                            <SelectItem value="Twitter">Twitter</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="genres"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Genres</FormLabel>
+                        <div className="max-h-[200px] overflow-y-auto border rounded-md p-2">
+                          {GENRES.map((group) => (
+                            <div key={group.category} className="mb-2">
+                              <h3 className="font-semibold">{group.category}</h3>
+                              {group.options.map((option) => (
+                                <div key={option} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={`genre-${option}`}
+                                    checked={field.value.includes(option)}
+                                    onCheckedChange={(checked) => {
+                                      const newGenres = checked
+                                        ? [...field.value, option]
+                                        : field.value.filter((g) => g !== option);
+                                      field.onChange(newGenres);
+                                    }}
+                                  />
+                                  <label htmlFor={`genre-${option}`} className="text-sm">
+                                    {option}
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="humor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Humor</FormLabel>
+                        <div className="border rounded-md p-2">
+                          {HUMOR_TYPES.map((humor) => (
+                            <div key={humor} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`humor-${humor}`}
+                                checked={field.value.includes(humor)}
+                                onCheckedChange={(checked) => {
+                                  const newHumor = checked
+                                    ? [...field.value, humor]
+                                    : field.value.filter((h) => h !== humor);
+                                  field.onChange(newHumor);
+                                }}
+                              />
+                              <label htmlFor={`humor-${humor}`} className="text-sm">
+                                {humor}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="image"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Upload Image (Optional)</FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select platform" />
-                          </SelectTrigger>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => field.onChange(e.target.files)}
+                          />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Instagram">Instagram</SelectItem>
-                          <SelectItem value="Twitter">Twitter</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="genres"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Genres</FormLabel>
-                      <div className="max-h-[200px] overflow-y-auto border rounded-md p-2">
-                        {GENRES.map((group) => (
-                          <div key={group.category} className="mb-2">
-                            <h3 className="font-semibold">{group.category}</h3>
-                            {group.options.map((option) => (
-                              <div key={option} className="flex items-center space-x-2">
-                                <Checkbox
-                                  id={`genre-${option}`}
-                                  checked={field.value.includes(option)}
-                                  onCheckedChange={(checked) => {
-                                    const newGenres = checked
-                                      ? [...field.value, option]
-                                      : field.value.filter((g) => g !== option);
-                                    field.onChange(newGenres);
-                                  }}
-                                />
-                                <label htmlFor={`genre-${option}`} className="text-sm">
-                                  {option}
-                                </label>
-                              </div>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="humor"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Humor</FormLabel>
-                      <div className="border rounded-md p-2">
-                        {HUMOR_TYPES.map((humor) => (
-                          <div key={humor} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`humor-${humor}`}
-                              checked={field.value.includes(humor)}
-                              onCheckedChange={(checked) => {
-                                const newHumor = checked
-                                  ? [...field.value, humor]
-                                  : field.value.filter((h) => h !== humor);
-                                field.onChange(newHumor);
-                              }}
-                            />
-                            <label htmlFor={`humor-${humor}`} className="text-sm">
-                              {humor}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="image"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Upload Image (Optional)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => field.onChange(e.target.files)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit">Generate</Button>
-              </form>
-            </FormProvider>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit">Generate</Button>
+                </form>
+              </FormProvider>
+            )}
           </DialogContent>
         </Dialog>
-        <div className="grid gap-4 mt-4">
-          {posts.map((post) => (
-            <Card key={post.id}>
-              <CardHeader>
-                <CardTitle>{form.getValues('platform')} Post</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p>{post.content}</p>
-                {post.image && <img src={post.image} alt="Post image" className="mt-2 max-w-full h-auto" />}
-                <div className="flex gap-2 mt-2">
-                  <Button onClick={() => handleEditPost(post)}>Edit</Button>
-                  <Button onClick={() => handleSaveDraft(post)}>Save Draft</Button>
-                  <Button onClick={() => handleSharePost(post)}>Share</Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {posts.length > 0 && (
+          <PostCarousel
+            posts={posts}
+            onEdit={handleEditPost}
+            onSaveDraft={handleSaveDraft}
+            onShare={handleSharePost}
+          />
+        )}
         {selectedPost && (
           <Dialog open={!!selectedPost} onOpenChange={() => setSelectedPost(null)}>
             <DialogContent>
